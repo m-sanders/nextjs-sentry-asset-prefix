@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Reproduction
 
-## Getting Started
+Using the experimental compile / generate mode results in an invalid server bundle.
 
-First, run the development server:
+Steps:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. `npm run build -- --no-mangling --experimental-build-mode compile`
+2. `npm run build -- --experimental-build-mode generate`
+
+Results in the below error:
+
+``
+> next build --experimental-build-mode generate
+
+   ▲ Next.js 15.3.2
+   - Experiments (use with caution):
+     · clientTraceMetadata
+
+   Creating an optimized production build ...
+ ✓ Collecting page data
+   Inlining static env ...
+Error occurred prerendering page "/_not-found". Read more: https://nextjs.org/docs/messages/prerender-error
+/Users/me/code/nextjs-sentry-asset-prefix/.next/server/chunks/575.js:172413
+    "/assets/" = userNextConfig.assetPrefix;
+    ^^^^^^^^^^
+
+SyntaxError: Invalid left-hand side in assignment
+    at wrapSafe (node:internal/modules/cjs/loader:1486:18)
+    at Module._compile (node:internal/modules/cjs/loader:1528:20)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+    at mod.require (/Users/me/code/nextjs-sentry-asset-prefix/node_modules/next/dist/server/require-hook.js:65:28)
+    at require (node:internal/modules/helpers:136:16)
+Export encountered an error on /_not-found/page: /_not-found, exiting the build.
+ ⨯ Next.js build worker exited with code: 1 and signal: null
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Where the source is invalid JavaScript:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```js
+function setUpBuildTimeVariables(
+  userNextConfig,
+  userSentryOptions,
+  releaseName,
+) {
+  const assetPrefix = userNextConfig.assetPrefix || userNextConfig.basePath || '';
+  const basePath = userNextConfig.basePath ?? '';
+  const rewritesTunnelPath =
+    userSentryOptions.tunnelRoute !== undefined && userNextConfig.output !== 'export'
+      ? `${basePath}${userSentryOptions.tunnelRoute}`
+      : undefined;
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+  const buildTimeVariables = {
+    // Make sure that if we have a windows path, the backslashes are interpreted as such (rather than as escape
+    // characters)
+    _sentryRewriteFramesDistDir: userNextConfig.distDir?.replace(/\\/g, '\\\\') || '.next',
+    // Get the path part of `assetPrefix`, minus any trailing slash. (We use a placeholder for the origin if
+    // `assetPrefix` doesn't include one. Since we only care about the path, it doesn't matter what it is.)
+    _sentryRewriteFramesAssetPrefixPath: assetPrefix
+      ? new URL(assetPrefix, 'http://dogs.are.great').pathname.replace(/\/$/, '')
+      : '',
+  };
 
-## Learn More
+  if (userNextConfig.assetPrefix) {
+    "/assets/" = userNextConfig.assetPrefix;
+  }
 
-To learn more about Next.js, take a look at the following resources:
+  if (userSentryOptions._experimental?.thirdPartyOriginStackFrames) {
+    buildTimeVariables._experimentalThirdPartyOriginStackFrames = 'true';
+  }
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+  if (rewritesTunnelPath) {
+    buildTimeVariables._sentryRewritesTunnelPath = rewritesTunnelPath;
+  }
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+  if (basePath) {
+    buildTimeVariables._sentryBasePath = basePath;
+  }
 
-## Deploy on Vercel
+  if (userNextConfig.assetPrefix) {
+    "/assets/" = userNextConfig.assetPrefix;
+  }
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+  if (userSentryOptions._experimental?.thirdPartyOriginStackFrames) {
+    buildTimeVariables._experimentalThirdPartyOriginStackFrames = 'true';
+  }
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+  if (releaseName) {
+    "e127d9a59a22b653b4c29453ad220721ff539e69" = releaseName;
+  }
+
+  if (typeof userNextConfig.env === 'object') {
+    userNextConfig.env = { ...buildTimeVariables, ...userNextConfig.env };
+  } else if (userNextConfig.env === undefined) {
+    userNextConfig.env = buildTimeVariables;
+  }
+}
+```
