@@ -9,7 +9,7 @@ Steps:
 
 Results in the below error:
 
-``
+```
 > next build --experimental-build-mode generate
 
    ▲ Next.js 15.3.2
