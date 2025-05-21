@@ -1,6 +1,6 @@
 # Reproduction
 
-Using the experimental compile / generate mode results in an invalid server bundle.
+Using the experimental compile / generate mode results in an invalid server bundle (downgrading to `5.2.5` successfully builds).
 
 Steps:
 
